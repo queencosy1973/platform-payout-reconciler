@@ -379,19 +379,43 @@ function runReconciliation() {
           : `โอนสำเร็จ ยอดตรงกับประมาณการ${dateNote}`
       });
     } else {
-      // 🚨 GHOST PAYOUT: เงินเข้าจริงแต่ไม่มีในไฟล์รอเงินเข้า (ตรวจจับการเอาออเดอร์อื่นมาจ่าย!)
-      reconciled.push({
-        status: 'GHOST',
-        orderId,
-        type: inc.type || 'คำสั่งซื้อ/ปรับปรุง',
-        estimatedAmount: 0,
-        actualAmount: inc.actualAmount,
-        diff: inc.actualAmount,
-        payoutTime: inc.payoutTime || 'วันที่โอน',
-        reason: 'ไม่อยู่ในรายการรอเงินเข้า (Ghost Payout)',
-        orderCreatedDate: '/',
-        notes: '🚨 ผิดปกติ! เลขคำสั่งซื้อนี้ไม่มีอยู่ในไฟล์รอเงินเข้า (ระบบอาจนำออเดอร์อื่นมาจ่ายแทน หรือเป็นรายการแอบปล่อยยอดหลังยื่นตั๋ว)'
-      });
+      const typeLower = String(inc.type || '').toLowerCase();
+      const isAdjustment = typeLower.includes('gmv') || 
+                           typeLower.includes('โฆษณา') || 
+                           typeLower.includes('ปรับ') || 
+                           typeLower.includes('deduction') || 
+                           typeLower.includes('withdrawal') || 
+                           typeLower.includes('earnings') || 
+                           inc.actualAmount < 0;
+
+      if (isAdjustment) {
+        reconciled.push({
+          status: 'ADJUSTMENT',
+          orderId,
+          type: inc.type || 'การปรับปรุงยอด',
+          estimatedAmount: 0,
+          actualAmount: inc.actualAmount,
+          diff: inc.actualAmount,
+          payoutTime: inc.payoutTime || 'วันที่โอน',
+          reason: 'รายการหักค่าธรรมเนียม/โฆษณา/ปรับปรุงยอดจากแพลตฟอร์ม',
+          orderCreatedDate: '/',
+          notes: `หักค่าใช้จ่ายแพลตฟอร์ม (${inc.type}) ยอด ${formatCurrency(inc.actualAmount)}`
+        });
+      } else {
+        // 🚨 GHOST PAYOUT: เงินเข้าจริงแต่ไม่มีในไฟล์รอเงินเข้า (ตรวจจับการเอาออเดอร์อื่นมาจ่าย!)
+        reconciled.push({
+          status: 'GHOST',
+          orderId,
+          type: inc.type || 'คำสั่งซื้อ/ปรับปรุง',
+          estimatedAmount: 0,
+          actualAmount: inc.actualAmount,
+          diff: inc.actualAmount,
+          payoutTime: inc.payoutTime || 'วันที่โอน',
+          reason: 'ไม่อยู่ในรายการรอเงินเข้า (Ghost Payout)',
+          orderCreatedDate: '/',
+          notes: '🚨 ผิดปกติ! เลขคำสั่งซื้อนี้ไม่มีอยู่ในไฟล์รอเงินเข้า (ระบบอาจนำออเดอร์อื่นมาจ่ายแทน หรือเป็นรายการแอบปล่อยยอดหลังยื่นตั๋ว)'
+        });
+      }
     }
   });
 
@@ -399,11 +423,19 @@ function runReconciliation() {
   pendingData.forEach(p => {
     if (!processedPendingIds.has(p.orderId)) {
       const pDate = extractDateStr(p.estimatedPayoutTime);
-      const isOverdueDate = pDate && refIncomeDate && pDate <= refIncomeDate;
       const isDeliveredWaiting = p.reason.includes('จัดส่งสำเร็จแล้ว รอการชำระเงิน');
 
-      // ถ้านัดโอนถึงกำหนดแล้ว หรือส่งสำเร็จแล้วรอเงิน แต่ไม่มีในไฟล์ Income ของวันนี้
-      if (isOverdueDate || isDeliveredWaiting) {
+      // ตรวจสอบว่าถึงกำหนดจริงหรือยัง (ถ้ามีวันที่นัดแล้วแต่วันที่นัดยังไม่ถึง จะไม่นับว่าค้าง)
+      let isOverdue = false;
+      if (pDate && refIncomeDate) {
+        if (pDate <= refIncomeDate) {
+          isOverdue = true; // ถึงกำหนดแล้ว (วันนี้หรือก่อนหน้านี้) แต่ไม่มีเงินเข้าในไฟล์ Income
+        }
+      } else if (!pDate && isDeliveredWaiting) {
+        isOverdue = true; // ส่งสำเร็จแล้วแต่ยังไม่ได้รับเงิน
+      }
+
+      if (isOverdue) {
         reconciled.push({
           status: 'OVERDUE',
           orderId: p.orderId,
@@ -508,6 +540,8 @@ function renderTable() {
     let badgeHtml = '';
     if (r.status === 'GHOST') {
       badgeHtml = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-800 border border-rose-200">🚨 เงินเข้าไม่ตรงนัด (Ghost)</span>`;
+    } else if (r.status === 'ADJUSTMENT') {
+      badgeHtml = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-800 border border-blue-200">ℹ️ ค่าธรรมเนียม/โฆษณา</span>`;
     } else if (r.status === 'OVERDUE') {
       badgeHtml = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">⏳ ถึงกำหนดแต่ไม่โอน</span>`;
     } else if (r.status === 'MISMATCH') {
