@@ -91,8 +91,31 @@ function readFileAsync(file) {
   });
 }
 
+// Ensure worksheet range (!ref) covers all actual cells (Fixes TikTok export bug where !ref is hardcoded to A1:X2)
+function fixWorksheetRef(worksheet) {
+  if (!worksheet) return;
+  let minRow = Infinity, maxRow = -Infinity;
+  let minCol = Infinity, maxCol = -Infinity;
+  for (const k in worksheet) {
+    if (k[0] === '!') continue;
+    const cell = XLSX.utils.decode_cell(k);
+    if (cell.r < minRow) minRow = cell.r;
+    if (cell.r > maxRow) maxRow = cell.r;
+    if (cell.c < minCol) minCol = cell.c;
+    if (cell.c > maxCol) maxCol = cell.c;
+  }
+  if (minRow !== Infinity) {
+    worksheet['!ref'] = XLSX.utils.encode_range({
+      s: { r: minRow, c: minCol },
+      e: { r: maxRow, c: maxCol }
+    });
+  }
+}
+
 // Find header row in sheet
 function parseSheetWithSmartHeaders(worksheet) {
+  if (!worksheet) return { headers: [], rows: [] };
+  fixWorksheetRef(worksheet);
   const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
   if (!json || json.length === 0) return { headers: [], rows: [] };
 
