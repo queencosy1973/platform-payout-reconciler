@@ -96,22 +96,36 @@ function parseSheetWithSmartHeaders(worksheet) {
   const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
   if (!json || json.length === 0) return { headers: [], rows: [] };
 
-  // Scan first 15 rows for header keywords
-  let headerRowIndex = 0;
-  for (let r = 0; r < Math.min(15, json.length); r++) {
-    const rowStr = json[r].map(c => String(c).toLowerCase()).join(' ');
+  // Scan first 20 rows for real header row
+  let headerRowIndex = -1;
+  for (let r = 0; r < Math.min(20, json.length); r++) {
+    const row = json[r];
+    const nonEmptyCells = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '');
+    if (nonEmptyCells.length < 3) continue;
+
+    // Skip long disclaimer or notice rows
+    const firstCell = String(row[0] || '').trim();
+    if (firstCell.startsWith('ข้อสงวนสิทธิ์') || firstCell.length > 80) continue;
+
+    const rowStr = row.map(c => String(c).toLowerCase()).join(' ');
     if (
       rowStr.includes('หมายเลขคำสั่งซื้อ') ||
       rowStr.includes('order id') ||
-      rowStr.includes('คำสั่งซื้อ') ||
-      rowStr.includes('เวลาการชำระเงิน') ||
-      rowStr.includes('จำนวนเงินที่ชำระ') ||
-      rowStr.includes('settlement')
+      rowStr.includes('order_id') ||
+      rowStr.includes('ประเภทธุรกรรม') ||
+      rowStr.includes('ยอดการชำระเงินทั้งหมด') ||
+      rowStr.includes('จำนวนเงินที่ชำระโดยประมาณ') ||
+      rowStr.includes('เวลาการชำระเงินโดยประมาณ') ||
+      rowStr.includes('เวลาที่ชำระคำสั่งซื้อ') ||
+      rowStr.includes('id อ้างอิง')
     ) {
       headerRowIndex = r;
       break;
     }
   }
+
+  // Fallback to row 0 if no header found
+  if (headerRowIndex === -1) headerRowIndex = 0;
 
   const rawHeaders = json[headerRowIndex] || [];
   const headers = rawHeaders.map((h, i) => String(h || '').trim() || `Column_${i + 1}`);
@@ -136,19 +150,26 @@ async function handlePendingFile(file) {
     document.getElementById('badge-pending').innerText = 'กำลังอ่านไฟล์...';
     pendingWorkbook = await readFileAsync(file);
     
-    // Populate sheet select
+    // Populate sheet select with row counts
     pendingSheetSelect.innerHTML = '';
+    let defaultSheet = pendingWorkbook.SheetNames[0];
+    let maxRows = -1;
+
     pendingWorkbook.SheetNames.forEach(name => {
+      const ws = pendingWorkbook.Sheets[name];
+      const { rows } = parseSheetWithSmartHeaders(ws);
       const opt = document.createElement('option');
       opt.value = name;
-      opt.innerText = name;
+      opt.innerText = `${name} (${rows.length.toLocaleString()} รายการ)`;
       pendingSheetSelect.appendChild(opt);
+
+      if (rows.length > maxRows) {
+        maxRows = rows.length;
+        defaultSheet = name;
+      }
     });
 
-    // Default to the largest sheet or September sheet
-    const defaultSheet = pendingWorkbook.SheetNames.find(s => s.includes('9.2569') || s.includes('9') || s.toLowerCase().includes('pending')) || pendingWorkbook.SheetNames[0];
     pendingSheetSelect.value = defaultSheet;
-
     document.getElementById('pending-filename').innerText = file.name;
     pendingFileInfo.classList.remove('hidden');
     document.getElementById('badge-pending').innerText = 'โหลดสำเร็จ';
@@ -173,7 +194,7 @@ function loadPendingSheet(sheetName) {
   pendingData = rows.map(r => {
     // Find matching keys
     const orderKey = Object.keys(r).find(k => k.includes('หมายเลขคำสั่งซื้อ/การปรับ') || k.includes('หมายเลขคำสั่งซื้อ') || k.toLowerCase().includes('order id') || k.toLowerCase().includes('order_id')) || '';
-    const amountKey = Object.keys(r).find(k => k.includes('จำนวนเงินที่ชำระโดยประมาณ') || k.includes('ยอดรวมค่าสินค้า') || k.toLowerCase().includes('estimated') || k.includes('จำนวนเงิน')) || '';
+    const amountKey = Object.keys(r).find(k => k.includes('จำนวนเงินที่ชำระโดยประมาณ') || k.includes('ยอดรวมค่าสินค้าหลังหักส่วนลด') || k.includes('ยอดรวมค่าสินค้า') || k.toLowerCase().includes('estimated') || k.includes('จำนวนเงิน')) || '';
     const estTimeKey = Object.keys(r).find(k => k.includes('เวลาการชำระเงินโดยประมาณ') || k.toLowerCase().includes('estimated payout') || k.includes('เวลาการชำระ')) || '';
     const reasonKey = Object.keys(r).find(k => k.includes('เหตุผลของการไม่ชำระเงิน') || k.toLowerCase().includes('reason')) || '';
     const typeKey = Object.keys(r).find(k => k.includes('ประเภทธุรกรรม') || k.toLowerCase().includes('type')) || '';
@@ -204,14 +225,21 @@ async function handleIncomeFile(file) {
     incomeWorkbook = await readFileAsync(file);
 
     incomeSheetSelect.innerHTML = '';
+    let defaultSheet = incomeWorkbook.SheetNames[0];
+
+    // Prefer รายละเอียดคำสั่งซื้อ
+    const orderDetailsSheet = incomeWorkbook.SheetNames.find(s => s.includes('รายละเอียดคำสั่งซื้อ') || s.toLowerCase().includes('order'));
+    if (orderDetailsSheet) defaultSheet = orderDetailsSheet;
+
     incomeWorkbook.SheetNames.forEach(name => {
+      const ws = incomeWorkbook.Sheets[name];
+      const { rows } = parseSheetWithSmartHeaders(ws);
       const opt = document.createElement('option');
       opt.value = name;
-      opt.innerText = name;
+      opt.innerText = `${name} (${rows.length.toLocaleString()} รายการ)`;
       incomeSheetSelect.appendChild(opt);
     });
 
-    const defaultSheet = incomeWorkbook.SheetNames[0];
     incomeSheetSelect.value = defaultSheet;
 
     document.getElementById('income-filename').innerText = file.name;
@@ -235,9 +263,36 @@ function loadIncomeSheet(sheetName) {
   const { headers, rows } = parseSheetWithSmartHeaders(ws);
 
   incomeData = rows.map(r => {
-    const orderKey = Object.keys(r).find(k => k.includes('หมายเลขคำสั่งซื้อ/การปรับ') || k.includes('หมายเลขคำสั่งซื้อ') || k.toLowerCase().includes('order id') || k.toLowerCase().includes('order_id') || k.includes('รหัสคำสั่งซื้อ')) || '';
-    const amountKey = Object.keys(r).find(k => k.includes('จำนวนเงินที่ชำระ') || k.includes('ยอดเงินสุทธิ') || k.includes('รายได้สุทธิ') || k.includes('จำนวนเงิน') || k.toLowerCase().includes('payout') || k.toLowerCase().includes('settled')) || '';
-    const timeKey = Object.keys(r).find(k => k.includes('เวลาการชำระเงิน') || k.includes('วันที่ชำระเงิน') || k.includes('วันที่โอน') || k.toLowerCase().includes('settlement time')) || '';
+    const orderKey = Object.keys(r).find(k => 
+      k.includes('หมายเลขคำสั่งซื้อ/การปรับ') || 
+      k.includes('หมายเลขคำสั่งซื้อ') || 
+      k.toLowerCase().includes('order id') || 
+      k.toLowerCase().includes('order_id') || 
+      k.includes('รหัสคำสั่งซื้อ') ||
+      k.includes('id อ้างอิง') ||
+      k.includes('id')
+    ) || '';
+
+    const amountKey = Object.keys(r).find(k => 
+      k.includes('ยอดการชำระเงินทั้งหมด') || 
+      k.includes('จำนวนเงินที่ชำระ') || 
+      k.includes('ยอดเงินสุทธิ') || 
+      k.includes('รายได้สุทธิ') || 
+      k.includes('จำนวนเงิน') || 
+      k.includes('จำนวน') ||
+      k.toLowerCase().includes('payout') || 
+      k.toLowerCase().includes('settled')
+    ) || '';
+
+    const timeKey = Object.keys(r).find(k => 
+      k.includes('เวลาที่ชำระคำสั่งซื้อ') || 
+      k.includes('เวลาการชำระเงิน') || 
+      k.includes('วันที่ชำระเงิน') || 
+      k.includes('วันที่โอน') || 
+      k.includes('เวลาที่สำเร็จ') ||
+      k.toLowerCase().includes('settlement time')
+    ) || '';
+
     const typeKey = Object.keys(r).find(k => k.includes('ประเภทธุรกรรม') || k.toLowerCase().includes('type')) || '';
 
     const orderId = String(r[orderKey] || '').trim();
@@ -431,7 +486,17 @@ function renderTable() {
 
   if (filtered.length === 0) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="9" class="py-8 text-center text-slate-400">ไม่พบรายการที่ตรงกับเงื่อนไขการค้นหา</td>`;
+    let emptyMsg = 'ไม่พบรายการที่ตรงกับเงื่อนไขการค้นหา';
+    if (activeFilter === 'matched') {
+      emptyMsg = 'ยังไม่พบรายการที่ตรงกัน (0 รายการ) — หากมีเงินโอนเข้ามาแต่ไม่อยู่ในคิวรอ ให้กดดูที่แท็บ "🚨 เงินเข้าไม่ตรงนัด" หรือตรวจสอบว่าเลือกแผ่นงาน (Sheet) ฝั่งซ้ายเป็นเดือนที่ต้องการ (เช่น 9.2569) แล้วหรือไม่';
+    } else if (activeFilter === 'ghost') {
+      emptyMsg = 'ไม่มีรายการเงินเข้าแปลก ๆ (ทุกรายการที่เงินเข้า มีอยู่ในคิวรอเงินเข้าทั้งหมด)';
+    } else if (activeFilter === 'overdue') {
+      emptyMsg = 'ไม่มีรายการค้างจ่ายที่เลยกำหนด';
+    } else if (activeFilter === 'mismatch') {
+      emptyMsg = 'ไม่พบรายการที่ยอดเงินไม่ตรงกัน';
+    }
+    tr.innerHTML = `<td colspan="9" class="py-8 text-center text-slate-500 font-medium">${emptyMsg}</td>`;
     tableBody.appendChild(tr);
     return;
   }
