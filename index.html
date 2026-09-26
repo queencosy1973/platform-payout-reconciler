@@ -116,43 +116,48 @@
     </div>
 
     <!-- Dashboard Metrics (Hidden before recon) -->
-    <div id="metrics-panel" class="hidden grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div id="metrics-panel" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       
       <!-- Card 1: Total Settled -->
-      <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-        <div class="text-xs text-slate-500 font-medium mb-1">ยอดเงินโอนเข้าจริง (Income)</div>
-        <div class="text-xl font-bold text-slate-900 mono" id="metric-total-income">฿0.00</div>
-        <div class="text-[11px] text-slate-500 mt-1" id="metric-income-count">0 รายการ</div>
+      <div class="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm">
+        <div class="text-[11px] text-slate-500 font-medium mb-1">ยอดเงินโอนเข้าจริง (Income)</div>
+        <div class="text-lg font-bold text-slate-900 mono" id="metric-total-income">฿0.00</div>
+        <div class="text-[10px] text-slate-500 mt-0.5" id="metric-income-count">0 รายการ</div>
       </div>
 
       <!-- Card 2: Matched -->
-      <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
-        <div class="text-xs text-emerald-700 font-medium mb-1">🟢 ตรงกันตามนัด</div>
-        <div class="text-xl font-bold text-emerald-600 mono" id="metric-matched-count">0</div>
-        <div class="text-[11px] text-emerald-600/80 mt-1" id="metric-matched-amount">฿0.00</div>
+      <div class="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm border-l-4 border-l-emerald-500">
+        <div class="text-[11px] text-emerald-700 font-medium mb-1">🟢 โอนตรงตามนัด</div>
+        <div class="text-lg font-bold text-emerald-600 mono" id="metric-matched-count">0</div>
+        <div class="text-[10px] text-emerald-600/80 mt-0.5" id="metric-matched-amount">฿0.00</div>
       </div>
 
-      <!-- Card 3: Ghost / Unexpected -->
-      <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm border-l-4 border-l-rose-500 bg-rose-50/30">
-        <div class="text-xs text-rose-700 font-semibold mb-1 flex items-center gap-1">
-          <span>🚨 เงินเข้าแบบไม่ได้นัด</span>
-        </div>
-        <div class="text-xl font-bold text-rose-600 mono" id="metric-ghost-count">0</div>
-        <div class="text-[11px] text-rose-600/80 mt-1" id="metric-ghost-amount">฿0.00 (ไม่อยู่ในคิว)</div>
+      <!-- Card 3: Cancelled / Refunded (0 บาท) -->
+      <div class="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm border-l-4 border-l-slate-400 bg-slate-50/50">
+        <div class="text-[11px] text-slate-700 font-medium mb-1">🚫 ยกเลิก/คืนเงิน (0 บ.)</div>
+        <div class="text-lg font-bold text-slate-600 mono" id="metric-cancelled-count">0</div>
+        <div class="text-[10px] text-slate-500 mt-0.5" id="metric-cancelled-note">ลูกค้ายกเลิก (฿0.00)</div>
       </div>
 
-      <!-- Card 4: Overdue / Held -->
-      <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm border-l-4 border-l-amber-500">
-        <div class="text-xs text-amber-700 font-medium mb-1">⏳ ค้างจ่าย / ไม่โอนตามนัด</div>
-        <div class="text-xl font-bold text-amber-600 mono" id="metric-overdue-count">0</div>
-        <div class="text-[11px] text-amber-600/80 mt-1" id="metric-overdue-amount">฿0.00 (รอโอน)</div>
+      <!-- Card 4: Pending Payout (รอรอบ 3 วันขึ้นไป) -->
+      <div class="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm border-l-4 border-l-amber-500">
+        <div class="text-[11px] text-amber-700 font-medium mb-1">⏳ รอระบบโอน (3 วัน+)</div>
+        <div class="text-lg font-bold text-amber-600 mono" id="metric-overdue-count">0</div>
+        <div class="text-[10px] text-amber-600/80 mt-0.5" id="metric-overdue-amount">฿0.00 (รอรอบโอน)</div>
       </div>
 
       <!-- Card 5: Amount Discrepancy -->
-      <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-sm border-l-4 border-l-purple-500">
-        <div class="text-xs text-purple-700 font-medium mb-1">⚠️ ยอดเงินไม่ตรง (ต่างกัน)</div>
-        <div class="text-xl font-bold text-purple-600 mono" id="metric-mismatch-count">0</div>
-        <div class="text-[11px] text-purple-600/80 mt-1" id="metric-mismatch-diff">ส่วนต่าง ฿0.00</div>
+      <div class="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm border-l-4 border-l-purple-500">
+        <div class="text-[11px] text-purple-700 font-medium mb-1">⚠️ ยอดเงินไม่ตรง (มีส่วนต่าง)</div>
+        <div class="text-lg font-bold text-purple-600 mono" id="metric-mismatch-count">0</div>
+        <div class="text-[10px] text-purple-600/80 mt-0.5" id="metric-mismatch-diff">ส่วนต่าง ฿0.00</div>
+      </div>
+
+      <!-- Card 6: Ghost / Unexpected -->
+      <div class="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm border-l-4 border-l-rose-500 bg-rose-50/30">
+        <div class="text-[11px] text-rose-700 font-semibold mb-1">🚨 เงินเข้านอกคิว</div>
+        <div class="text-lg font-bold text-rose-600 mono" id="metric-ghost-count">0</div>
+        <div class="text-[10px] text-rose-600/80 mt-0.5" id="metric-ghost-amount">฿0.00 (ไม่อยู่ในคิว)</div>
       </div>
 
     </div>
@@ -168,17 +173,23 @@
           <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-800 shadow-sm" data-filter="all">
             ทั้งหมด (<span id="tab-count-all">0</span>)
           </button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 hover:bg-rose-50" data-filter="ghost">
-            🚨 เงินเข้าไม่ตรงนัด (<span id="tab-count-ghost">0</span>)
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-50" data-filter="matched">
+            🟢 ตรงตามนัด (<span id="tab-count-matched">0</span>)
           </button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 hover:bg-amber-50" data-filter="overdue">
-            ⏳ ถึงกำหนดแต่ไม่โอน (<span id="tab-count-overdue">0</span>)
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100" data-filter="cancelled">
+            🚫 ยกเลิก/คืนเงิน (<span id="tab-count-cancelled">0</span>)
+          </button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 hover:bg-amber-50" data-filter="pending_payout">
+            ⏳ รอระบบโอน (3 วัน+) (<span id="tab-count-overdue">0</span>)
           </button>
           <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-purple-700 hover:bg-purple-50" data-filter="mismatch">
             ⚠️ ยอดเงินไม่ตรง (<span id="tab-count-mismatch">0</span>)
           </button>
-          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 hover:bg-emerald-50" data-filter="matched">
-            🟢 ตรงกันปกติ (<span id="tab-count-matched">0</span>)
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 hover:bg-rose-50" data-filter="ghost">
+            🚨 เงินเข้านอกคิว (<span id="tab-count-ghost">0</span>)
+          </button>
+          <button class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-blue-700 hover:bg-blue-50" data-filter="adjustment">
+            ℹ️ ค่าธรรมเนียม/โฆษณา (<span id="tab-count-adjustment">0</span>)
           </button>
         </div>
 
