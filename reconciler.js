@@ -255,6 +255,21 @@ function loadIncomeSheet(sheetName) {
 }
 
 // Reconciliation Engine
+// Helper to parse dates from string (supports YYYY/MM/DD, YYYY-MM-DD, DD/MM/YYYY)
+function extractDateStr(str) {
+  if (!str) return null;
+  const match = str.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, '0')}-${String(match[3]).padStart(2, '0')}`;
+  }
+  const matchThai = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (matchThai) {
+    return `${matchThai[3]}-${String(matchThai[2]).padStart(2, '0')}-${String(matchThai[1]).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+// Reconciliation Engine
 function runReconciliation() {
   if (pendingData.length === 0 && incomeData.length === 0) return;
 
@@ -263,10 +278,19 @@ function runReconciliation() {
     pendingMap.set(p.orderId, p);
   });
 
+  // Extract reference payout date from Income file
+  let refIncomeDate = null;
+  for (const inc of incomeData) {
+    const d = extractDateStr(inc.payoutTime);
+    if (d) {
+      if (!refIncomeDate || d > refIncomeDate) refIncomeDate = d;
+    }
+  }
+
   const reconciled = [];
   const processedPendingIds = new Set();
 
-  // 1. Process Income Items
+  // 1. Process Income Items (ตรวจสอบทีละรายการที่เงินเข้าจริง เทียบกับไฟล์รอเงินเข้า)
   incomeData.forEach(inc => {
     const orderId = inc.orderId;
     const pendingItem = pendingMap.get(orderId);
@@ -277,6 +301,13 @@ function runReconciliation() {
       const actAmt = inc.actualAmount;
       const diff = actAmt - estAmt;
       const hasMismatch = Math.abs(diff) >= 0.05;
+
+      // ตรวจสอบวันที่นัดโอน
+      let dateNote = '';
+      const pendingDate = extractDateStr(pendingItem.estimatedPayoutTime);
+      if (pendingDate && refIncomeDate && pendingDate > refIncomeDate) {
+        dateNote = ` (⚡ โอนข้ามรอบ/เร่งโอน นัดเดิม: ${pendingItem.estimatedPayoutTime})`;
+      }
 
       reconciled.push({
         status: hasMismatch ? 'MISMATCH' : 'MATCHED',
@@ -289,12 +320,11 @@ function runReconciliation() {
         reason: pendingItem.reason || 'โอนสำเร็จ',
         orderCreatedDate: pendingItem.orderCreatedDate || '/',
         notes: hasMismatch 
-          ? `ยอดเงินไม่ตรงกัน ส่วนต่าง ${formatCurrency(diff)} (อาจมีค่าธรรมเนียม/ค่าขนส่งเพิ่มเติม)` 
-          : 'โอนสำเร็จ ยอดตรงกับประมาณการ'
+          ? `ยอดเงินไม่ตรงกัน ส่วนต่าง ${formatCurrency(diff)}${dateNote}` 
+          : `โอนสำเร็จ ยอดตรงกับประมาณการ${dateNote}`
       });
     } else {
-      // GHOST PAYOUT (Case วันที่ 22!)
-      // In Income, but NOT in Pending File!
+      // 🚨 GHOST PAYOUT: เงินเข้าจริงแต่ไม่มีในไฟล์รอเงินเข้า (ตรวจจับการเอาออเดอร์อื่นมาจ่าย!)
       reconciled.push({
         status: 'GHOST',
         orderId,
@@ -305,21 +335,20 @@ function runReconciliation() {
         payoutTime: inc.payoutTime || 'วันที่โอน',
         reason: 'ไม่อยู่ในรายการรอเงินเข้า (Ghost Payout)',
         orderCreatedDate: '/',
-        notes: '🚨 เงินเข้าแปลก ๆ! ไม่มีในรายงานรอเงินเข้าของวันนั้น (อาจเกิดจากการยื่น Ticket ปลดล็อก หรือรายการปรับยอดฉุกเฉิน)'
+        notes: '🚨 ผิดปกติ! เลขคำสั่งซื้อนี้ไม่มีอยู่ในไฟล์รอเงินเข้า (ระบบอาจนำออเดอร์อื่นมาจ่ายแทน หรือเป็นรายการแอบปล่อยยอดหลังยื่นตั๋ว)'
       });
     }
   });
 
-  // 2. Process Remaining Pending Items (Check for Overdue / Held)
+  // 2. Process Remaining Pending Items (ตรวจเช็คออเดอร์ในไฟล์รอเงินเข้า ที่ถึงกำหนดแล้วแต่เงินไม่ยอมเข้า)
   pendingData.forEach(p => {
     if (!processedPendingIds.has(p.orderId)) {
-      // Check if it should have been paid
-      // In TikTok Shop: if estimatedPayoutTime is a date, or reason is "จัดส่งสำเร็จแล้ว รอการชำระเงิน"
-      const estTime = p.estimatedPayoutTime;
-      const isPastOrToday = estTime.includes('2026/09/22') || estTime.includes('2026/09/21') || estTime.includes('2026/09/20') || estTime.includes('2026/09/23');
+      const pDate = extractDateStr(p.estimatedPayoutTime);
+      const isOverdueDate = pDate && refIncomeDate && pDate <= refIncomeDate;
       const isDeliveredWaiting = p.reason.includes('จัดส่งสำเร็จแล้ว รอการชำระเงิน');
 
-      if (isPastOrToday || isDeliveredWaiting) {
+      // ถ้านัดโอนถึงกำหนดแล้ว หรือส่งสำเร็จแล้วรอเงิน แต่ไม่มีในไฟล์ Income ของวันนี้
+      if (isOverdueDate || isDeliveredWaiting) {
         reconciled.push({
           status: 'OVERDUE',
           orderId: p.orderId,
@@ -330,7 +359,7 @@ function runReconciliation() {
           payoutTime: p.estimatedPayoutTime,
           reason: p.reason,
           orderCreatedDate: p.orderCreatedDate,
-          notes: `⏳ กำหนดโอน ${p.estimatedPayoutTime} แต่ไม่มีเงินเข้าในไฟล์ Income (ควรเปิด Ticket ถาม Support)`
+          notes: `⏳ ถึงกำหนดโอน ${p.estimatedPayoutTime} แต่ไม่มีเงินเข้าในไฟล์ Income (ยอดถูกกัก/ตกหล่น ควรเปิด Ticket ถาม)`
         });
       }
     }
